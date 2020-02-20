@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>FPS</title>
+</head>
+
+<body>
+    <script type="text/javascript" src="three.min.js"></script>
+    <script type="text/javascript" src="MTLLoader.js"></script>
+    <script type="text/javascript" src="OBJLoader.js"></script>
+    <!--
+    <script type="text/javascript" src="Detector.js"></script>
+    <script type="text/javascript" src="physi.js"></script>
+    <script type="text/javascript">
+	
+        'use strict';
+        
+        Physijs.scripts.worker = 'physijs_worker.js';
+        Physijs.scripts.ammo = 'ammo.js';
+        </script>
+    -->
+    <style>
+        #score {
+            position: absolute;
+            top: 80px;
+            width: 100%;
+            text-align: right;
+            z-index: 100;
+            display: block;
+            color: rgb(15, 160, 34);
+            font-family: verdana;
+            font-size: 40px;
+            right: 60px;
+        }
+
+        #health {
+            color: rgb(175, 25, 25);
+            position: absolute;
+            top: 80px;
+            left: 20px;
+            width: 100%;
+            text-align: left;
+            z-index: 100;
+            display: block;
+            font-family: verdana;
+            font-size: 40px;
+
+        }
+    </style>
+    <script>
+        //Variables
+        var enemies = [];
+
+        var enemy = { health: 2, speed: 0.04 };
+        var max = 50;
+        var min = -50;
+        var scene, camera, renderer, meshFloor, ambientLight, light;
+        var crate, crateTexture, crateNormalMap, crateBumbMap;
+        var collidableMeshList = [];
+        var score = 0;
+        collidableMeshList.push(crate);
+        var keyboard = {};
+        var player = { health: 100, height: 1.8, speed: 0.1, turnSpeed: Math.PI * 0.01, canShoot: 0 }
+        var loadingScreen = {
+            scene: new THREE.Scene(),
+            camera: new THREE.PerspectiveCamera(90, 1280 / 720, 0.1, 100),
+            box: new THREE.Mesh(
+                new THREE.BoxGeometry(0.5, 0.5, 0.5),
+                new THREE.MeshBasicMaterial({ color: 0x4444ff })
+            )
+        };
+        var LOADING_MANAGER = null;
+        var RESOURCES_LOADER = false;
+        //Array of Models
+        var models = {
+            tree: { obj: "tree.obj", mtl: "tree.mtl", mesh: null },
+            tree2: { obj: "tree2.obj", mtl: "tree2.mtl", mesh: null },
+            tree3: { obj: "tree3.obj", mtl: "tree3.mtl", mesh: null },
+            weapon: { obj: "shotgun.obj", mtl: "shotgun.mtl", mesh: null, castShadow: false },
+            ground: { obj: "Plate_Grass_01.obj", mtl: "Plate_Grass_01.mtl", mesh: null, castShadow: false }
+        };
+        //Array of Meshes to store cloned models
+        var meshes = {};
+        //Array of Bullets
+        var bullets = [];
+        //Random Variable
+        ////////////////////////////////////////////////////////////////////////////////////////
+        var time = 3000;
+        function init() {
+            setTimeout(Backgroundmusic, 3000);
+            function Backgroundmusic() {
+                var audio = new Audio(' Enterthegun.mp3');
+                audio.play();
+                audio.loop = true;
+            }
+            function Movesound() {
+                var audio = new Audio('Move.mp3');
+                audio.play();
+            }
+
+
+
+
+            scene = new THREE.Scene; //the scene is the world
+            camera = new THREE.PerspectiveCamera(90, innerWidth / innerHeight, 0.1, 1000); //the camera is your eyes
+            scene.background = new THREE.TextureLoader().load('Background1.jpg');
+            loadingManager = new THREE.LoadingManager();
+            /*loadingManager.onProgress = function (item, loaded, total) {
+                console.log(item, loaded, total);
+            }*/
+
+
+
+            if (enemies.length == 0) {
+                for (var i = 0; i < 50; i++) {
+                    enemies[i] = new THREE.Mesh(
+                        new THREE.BoxGeometry(1, 2, 1),
+                        new THREE.MeshPhongMaterial({ color: 0xff4444, wireframe: false })
+                    )
+                    enemies[i].receiveShadow = true;
+                    enemies[i].castShadow = true;
+                    enemies[i].position.set(Math.floor(Math.random() * (max - min + 1)) + min, 1, Math.floor(Math.random() * (max - min + 1)) + min);
+                    scene.add(enemies[i]);
+                }
+
+            }
+            loadingManager.onLoad = function () {
+                console.log("loaded all resources");
+                RESOURCES_LOADER = true;
+                onResourcesLoaded();
+            }
+            loadingScreen.box.position.set(0, 0, 5);
+            loadingScreen.camera.lookAt(loadingScreen.box.position);
+            loadingScreen.scene.add(loadingScreen.box);
+            meshFloor = new THREE.Mesh(
+                new THREE.PlaneGeometry(500, 500, 10, 10), //el 10 wel 10 el fel a5er da el number of segments
+                new THREE.MeshPhongMaterial({ color: 0xc2b280, wireframe: false })
+                //phong reacts to light
+                //bnst5dm el wireframe 3shan nzbot el geometry fel early stages
+            );
+            meshFloor.rotation.x -= 90 * (Math.PI / 180);
+            meshFloor.receiveShadow = true;
+
+            scene.add(meshFloor);
+
+            ambientLight = new THREE.AmbientLight(0xFDB900, 0.3); //(white color, intensity)
+            scene.add(ambientLight);
+
+            let orangeLight = new THREE.PointLight(0xcc6600, 10, 350, 0.8);
+            orangeLight.position.set(200, 300, 100);
+            let redLight = new THREE.PointLight(0xd8547e, 10, 350, 1.7);
+            redLight.position.set(200, 300, 100);
+            scene.add(orangeLight);
+            scene.add(redLight);
+            light = new THREE.PointLight(0xc2b280, 0.8, 1000); //(color,intensity,distance,decay)
+            light.position.set(-3, 100, -3);
+            light.castShadow = true;
+            light.shadow.camera.near = 0.1;
+            light.shadow.camera.far = 1000;
+            scene.add(light);
+
+            var textureLoader = new THREE.TextureLoader(loadingManager);
+            crateTexture = new textureLoader.load("crate0/crate0_diffuse.png");
+            crateBumpMap = new textureLoader.load("crate0/crate0_bump.png");
+            crateNormalMap = new textureLoader.load("crate0/crate0_normal.png");
+            crate = new THREE.Mesh(
+                new THREE.BoxGeometry(1, 1, 1),
+                new THREE.MeshPhongMaterial({ color: 0xffffff, map: crateTexture, bumpMap: crateBumpMap, normalMap: crateNormalMap })
+            );
+            scene.add(crate);
+            crate.position.set(2.5, 1, 2.5);
+            crate.receiveShadow = true;
+            crate.castShadow = true;
+            camera.position.set(0, player.height, -5);
+            camera.lookAt(new THREE.Vector3(0, player.height, 0)); //to look at the mesh // 0,0,0 el original position bta3 el mesh
+
+            //3d Models
+            /*var mtlLoader = new THREE.MTLLoader(loadingManager);
+            mtlLoader.load("tree.mtl", function(materials){
+                materials.preload();
+                var objLoader = new THREE.OBJLoader(loadingManager);
+                objLoader.setMaterials(materials);
+                objLoader.load("tree.obj", function(mesh){
+    
+                    mesh.traverse(function(node){
+                        if(node instanceof THREE.Mesh){
+                            node.castShadow = true;
+                            node.receiveShadow = true;
+                        }
+                    });
+    
+                    scene.add(mesh);
+                    mesh.position.set(-6,0,4);
+                }
+                );
+            }
+            )*/
+            for (var index in models) {
+                (function (index) {
+
+                    var mtlLoader = new THREE.MTLLoader(loadingManager);
+                    mtlLoader.load(models[index].mtl, function (materials) {
+                        materials.preload();
+
+                        var objLoader = new THREE.OBJLoader(loadingManager);
+
+                        objLoader.setMaterials(materials);
+                        objLoader.load(models[index].obj, function (mesh) {
+
+                            mesh.traverse(function (node) {
+                                if (node instanceof THREE.Mesh) {
+                                    if ("castShadow" in models[index]) {
+                                        node.castShadow = false;
+                                    }
+                                    else node.castShadow = true;
+                                    if ("receiveShadow" in models[index]) {
+                                        node.receiveShadow = false;
+                                    }
+                                    else node.receiveShadow = true;
+                                }
+                            });
+                            models[index].mesh = mesh;
+
+                        });
+                    });
+
+                })(index);
+            }
+
+            renderer = new THREE.WebGLRenderer(); //the renderer draws the scene as seen by the camera
+            renderer.setSize(innerWidth, innerHeight);
+            renderer.shadowMap.enabled = true; //enabling shadows in the renderer
+            renderer.shadowMap.type = THREE.BasicShadowMap; //type of shadow we are using
+            document.body.appendChild(renderer.domElement);
+            var helper = new THREE.CameraHelper(light.shadow.camera); //position of the light
+            scene.add(helper);
+            animate();
+        }
+        //Runs when all resources are loaded
+        function onResourcesLoaded() {
+            var max = 50;
+            var min = -50;
+            //Clone models into meshes
+            /*meshes["ground"] = models.ground.mesh.clone();
+            meshes["ground"].position.set(-10000, 0.1, 10000);
+            meshes["ground"].scale.set(10000, 0, 10000);
+            */
+            meshes["playerweapon"] = models.weapon.mesh.clone();
+            scene.add(meshes["ground"]);
+            // Reposition individual meshes, then add meshes to scene
+            meshes["playerweapon"].position.set(0, 2, 0);
+            meshes["playerweapon"].scale.set(10, 10, 10);
+            scene.add(meshes["playerweapon"]);
+            //Randomly spawning different type of trees and adding them to the scene
+            for (var i = 5; i < 10; i++) {
+                meshes[i.toString()] = models.tree2.mesh.clone();
+                meshes[i.toString()].position.set(Math.floor(Math.random() * (max - min + 1)) + min, 0, Math.floor(Math.random() * (max - min + 1)) + min);
+                scene.add(meshes[i.toString()]);
+            }
+            for (var i = 5; i < 70; i++) {
+                meshes[i.toString()] = models.tree3.mesh.clone();
+                meshes[i.toString()].position.set(Math.floor(Math.random() * (max - min + 1)) + min, 0, Math.floor(Math.random() * (max - min + 1)) + min);
+                scene.add(meshes[i.toString()]);
+            }
+            for (var i = 5; i < 10; i++) {
+                meshes[i.toString()] = models.tree.mesh.clone();
+                meshes[i.toString()].position.set(Math.floor(Math.random() * (max - min + 1)) + min, 0, Math.floor(Math.random() * (max - min + 1)) + min);
+                scene.add(meshes[i.toString()]);
+            }
+        }
+
+        function animate() {
+            var time = Date.now() * 0.0005;
+            document.getElementById("score").innerHTML = "Score : " + score;
+            document.getElementById("health").innerHTML = "Health : " + player.health;
+            if (RESOURCES_LOADER == false) {
+                requestAnimationFrame(animate);
+                renderer.render(loadingScreen.scene, loadingScreen.camera);
+                return;
+            }
+            //Position the gun infront of the camera
+            meshes["playerweapon"].position.set(
+                camera.position.x - Math.sin(camera.rotation.y + Math.PI / 6) * 0.75,
+                camera.position.y - 0.5 + Math.sin(time * 4 + camera.position.x + camera.position.z) * 0.01,
+                camera.position.z + Math.cos(camera.rotation.y + Math.PI / 6) * 0.75
+            );
+            meshes["playerweapon"].rotation.set(
+                camera.rotation.x,
+                camera.rotation.y - Math.PI,
+                camera.rotation.z
+            );
+            for (var i = 0; i < 50; i++) {
+                var cameraX = Math.sign(camera.position.x);
+                var cameraZ = Math.sign(camera.position.z);
+                var enemyX = Math.sign(enemies[i].position.x);
+                var enemyZ = Math.sign(enemies[i].position.z);
+                if (enemies[i].position.x != camera.position.x) {
+                    if (cameraX == 1 && enemyX == 1) {
+                        if (enemies[i].position.x > camera.position.x) enemies[i].position.x -= enemy.speed;
+                        else enemies[i].position.x += enemy.speed;
+                    }
+                    if (cameraX == -1 && enemyX == -1) {
+                        if (enemies[i].position.x > camera.position.x) enemies[i].position.x -= enemy.speed;
+                        else enemies[i].position.x += enemy.speed;
+                    }
+                    if (cameraX == 1 && enemyX == -1) enemies[i].position.x += enemy.speed;
+                    if (cameraX == -1 && enemyX == 1) enemies[i].position.x -= enemy.speed;
+                }
+                if (enemies[i].position.z != camera.position.z) {
+                    if (cameraZ == 1 && enemyZ == 1) {
+                        if (enemies[i].position.z > camera.position.z) enemies[i].position.z -= enemy.speed;
+                        else enemies[i].position.z += enemy.speed;
+                    }
+                    if (cameraZ == -1 && enemyZ == -1) {
+                        if (enemies[i].position.z > camera.position.z) enemies[i].position.z -= enemy.speed;
+                        else enemies[i].position.z += enemy.speed;
+                    }
+                    if (cameraZ == 1 && enemyZ == -1) enemies[i].position.z += enemy.speed;
+                    if (cameraZ == -1 && enemyZ == 1) enemies[i].position.z -= enemy.speed;
+                }
+            }
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+            //Bullets
+            for (var i = 0; i < bullets.length; i++) {
+                if (bullets[i] == undefined) continue;
+                if (bullets[i].alive == false) {
+                    //bullets.splice(i, 1); //if the bullet is not alive, skip to the next one and remove this one
+                    continue;
+                }
+                bullets[i].position.add(bullets[i].velocity); //adding velocity to the bullets position
+                //bullets[i].position == bullets[i].velocity;
+            }
+            if (keyboard[32] && player.canShoot <= 0) {//Spacebar
+                var audio = new Audio('ie_shot_gun-luminalace-770179786.mp3');
+                audio.play();
+                var bullet = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.05, 32, 32), //(radius, widthSegments, heightSegments)
+                    new THREE.MeshBasicMaterial({ color: 0xffffff })
+                );
+                //var bullet = models.tree2.mesh.clone();
+                bullet.position.set(
+                    meshes["playerweapon"].position.x,
+                    meshes["playerweapon"].position.y + 0.15,
+                    meshes["playerweapon"].position.z + 0.15
+                );
+                bullet.velocity = new THREE.Vector3(
+                    -Math.sin(camera.rotation.y),
+                    0,
+                    Math.cos(camera.rotation.y)
+                );
+                bullet.alive = true;
+                bullets.push(bullet);
+                scene.add(bullet);
+                setTimeout(function () {
+                    bullet.alive = false;
+                    scene.remove(bullet);
+                }, 10000);
+                player.canShoot = 20; //setting it to 10 means it takes 10 frames between shots .. 60 frames = 1 seconds
+            }
+            for (var i = 0; i < bullets.length; i++) {
+                for (var x = 0; x < enemies.length; x++) {
+                    if ((bullets[i].position.z >= enemies[x].position.z - 0.5 && bullets[i].position.z <= enemies[x].position.z + 0.5) &&
+                        (bullets[i].position.x <= enemies[x].position.x + 0.5 && bullets[i].position.x >= enemies[x].position.x - 0.5) &&
+                        (bullets[i].position.y <= enemies[x].position.y + 1 && bullets[i].position.y >= enemies[x].position.y - 1)) {
+                        score += 10;
+                        console.log("feh collision");
+                        scene.remove(enemies[x]);
+                        enemies[x] = new THREE.Mesh(
+                            new THREE.BoxGeometry(1, 2, 1),
+                            new THREE.MeshPhongMaterial({ color: 0x0ee8e6, wireframe: false })
+                        )
+                        enemies[x].receiveShadow = true;
+                        enemies[x].castShadow = true;
+                        enemies[x].position.set(Math.floor(Math.random() * (max - min + 1)) + min, 1, Math.floor(Math.random() * (max - min + 1)) + min);
+                        scene.add(enemies[x]);
+                    }
+                }
+            }
+            for (var x = 0; x < enemies.length; x++) {
+                if (player.health >= 0) {
+                    if ((enemies[x].position.z >= camera.position.z - 0.5 && enemies[x].position.z <= camera.position.z + 0.5) &&
+                        (enemies[x].position.x <= camera.position.x + 0.5 && enemies[x].position.x >= camera.position.x - 0.5) &&
+                        (enemies[x].position.y <= camera.position.y + 1 && enemies[x].position.y >= camera.position.y - 1)) {
+                        player.health--;
+                    }
+                }
+                else {
+                    alert("gameover");
+                }
+            }
+            console.log(score);
+
+            if (player.canShoot > 0) player.canShoot -= 1;
+
+            //console.log(-Math.sin(camera.rotation.y));
+            //console.log(Math.cos(camera.rotation.y));          
+            /////////////////////////////////////////
+
+            if (keyboard[87]) { //W Key
+                camera.position.x -= Math.sin(camera.rotation.y) * player.speed;
+                camera.position.z -= -Math.cos(camera.rotation.y) * player.speed;
+            }
+            if (keyboard[83]) { //S Key
+                camera.position.x += Math.sin(camera.rotation.y) * player.speed;
+                camera.position.z += -Math.cos(camera.rotation.y) * player.speed;
+            }
+            if (keyboard[65]) {
+                //    var audio = new Audio('Move.mp3');
+                //  audio.play();//A Key
+                camera.position.x += Math.sin(camera.rotation.y + Math.PI / 2) * player.speed; //90 degrees
+                camera.position.z += -Math.cos(camera.rotation.y + Math.PI / 2) * player.speed;
+            }
+            if (keyboard[68]) {
+                camera.position.x += Math.sin(camera.rotation.y - Math.PI / 2) * player.speed;
+                camera.position.z += -Math.cos(camera.rotation.y - Math.PI / 2) * player.speed;
+            }
+            if (keyboard[37]) { //Left Arrow Key
+                camera.rotation.y -= player.turnSpeed;
+            }
+            if (keyboard[39]) { //Right Arrow Key
+                camera.rotation.y += player.turnSpeed;
+            }
+            if (keyboard[38]) { //Left Arrow Key
+                meshes["playerweapon"].rotation.y -= player.turnSpeed;
+            }
+            if (keyboard[40]) { //Left Arrow Key
+                meshes["playerweapon"].position.set(0, 4, 0);
+            }
+        }
+        var audio = new Audio('Move.mp3');
+        window.onkeydown = function (e) {
+            var key = e.keyCode ? e.keyCode : e.which;
+            if (key == 87) {
+                audio.play();
+            }
+            if (key == 83) {
+                audio.play();
+            } if (key == 65) {
+                audio.play();
+            }
+            if (key == 68) {
+                audio.play();
+            }
+        }
+        window.onkeyup = function (e) {
+            var key1 = e.keyCode ? e.keyCode : e.which;
+            if (key1 == 87) {
+                audio.pause();
+                audio.currentTime = 0;
+            }
+            if (key1 == 83) {
+                audio.pause();
+                audio.currentTime = 0;
+            } if (key1 == 65) {
+                audio.pause();
+                audio.currentTime = 0;
+            }
+            if (key1 == 68) {
+                audio.pause();
+                audio.currentTime = 0;
+            }
+        }
+
+
+
+        function keyDown(event) { //so we can two directions
+            keyboard[event.keyCode] = true;
+        }
+        function keyUp(event) {
+            keyboard[event.keyCode] = false;
+        }
+        window.addEventListener('keydown', keyDown);
+        window.addEventListener('keyup', keyUp);
+        window.onload = init;
+
+    </script>
+        <div id="score"></div>
+        <div id="health"></div>
+</body>
+
+</html>
